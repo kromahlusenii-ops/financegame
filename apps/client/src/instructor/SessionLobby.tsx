@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getAuthHeaders } from '../lib/supabase';
 import { useGameChannel } from '../ws/useGameChannel';
 import QRCode from 'qrcode';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
-const APP_URL = import.meta.env.VITE_APP_URL || 'http://localhost:5173';
+const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
 
 export default function SessionLobby() {
   const { id } = useParams<{ id: string }>();
@@ -45,11 +45,33 @@ export default function SessionLobby() {
     }
   }
 
+  // Poll for players from DB every 3 seconds as a reliable fallback
+  const pollPlayers = useCallback(async (code: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/join/${code}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.players && data.players.length > 0) {
+          setPlayers(data.players);
+        }
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (!joinCode) return;
+    // Poll immediately and then every 3s
+    pollPlayers(joinCode);
+    const interval = setInterval(() => pollPlayers(joinCode), 3000);
+    return () => clearInterval(interval);
+  }, [joinCode, pollPlayers]);
+
+  // Also listen for realtime broadcasts (faster when it works)
   useEffect(() => {
     const unsub = onMessage((msg: any) => {
       switch (msg.type) {
         case 'lobby_update':
-          setPlayers(msg.players);
+          if (msg.players) setPlayers(msg.players);
           break;
         case 'player_joined':
           setPlayers(prev => {
@@ -70,7 +92,7 @@ export default function SessionLobby() {
     try {
       const res = await fetch(`${API_BASE}/api/sessions/${id}/launch`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       });
 
       if (res.ok) {

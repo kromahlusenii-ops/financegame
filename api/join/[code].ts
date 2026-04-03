@@ -35,16 +35,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('id', session.lesson_id)
       .single();
 
-    // Count players
-    const { count: playerCount } = await supabase
+    // Get players
+    const { data: players } = await supabase
       .from('session_players')
-      .select('*', { count: 'exact', head: true })
+      .select('id, display_name')
       .eq('session_id', session.id);
 
     return res.status(200).json({
       sessionId: session.id,
       lessonTitle: lesson?.title ?? '',
-      playerCount: playerCount ?? 0,
+      playerCount: players?.length ?? 0,
+      players: (players ?? []).map((p: any) => ({ id: p.id, name: p.display_name })),
       status: session.status,
     });
   } catch (err: any) {

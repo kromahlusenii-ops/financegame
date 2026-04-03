@@ -54,13 +54,13 @@ export default function Lobby() {
     return unsub;
   }, [state, onMessage, navigate, playerId]);
 
-  // Join via HTTP POST once connected
+  // Join via HTTP POST immediately (don't wait for realtime)
   useEffect(() => {
-    if (isConnected && state && !joinedRef.current) {
+    if (state && !joinedRef.current) {
       joinedRef.current = true;
       joinSession();
     }
-  }, [isConnected, state]);
+  }, [state]);
 
   async function joinSession() {
     if (!state) return;
