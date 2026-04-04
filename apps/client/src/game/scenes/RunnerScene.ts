@@ -69,21 +69,22 @@ export default class RunnerScene extends Phaser.Scene {
     this.dirtLayer = this.add.tileSprite(0, groundY + TILE_SIZE, width, TILE_SIZE, 'dirtCenter')
       .setOrigin(0, 0).setDepth(5);
 
-    // Invisible ground collision body — top edge at groundY
-    this.groundBody = this.physics.add.staticImage(width / 2, groundY + TILE_SIZE / 2, 'grassMid')
-      .setDisplaySize(width * 2, TILE_SIZE).setVisible(false);
-    // Shift the physics body so its top edge is exactly at groundY
-    (this.groundBody.body as Phaser.Physics.Arcade.StaticBody).setOffset(0, 0);
+    // Invisible thin ground collision platform at groundY
+    // Using a rectangle zone with static physics body — top edge exactly at groundY
+    const groundPlatform = this.add.rectangle(width / 2, groundY + 5, width * 3, 10, 0x000000, 0);
+    this.physics.add.existing(groundPlatform, true); // true = static
+    this.groundBody = groundPlatform as unknown as Phaser.Physics.Arcade.Image;
 
     // === Player ===
-    // Player sprite is ~92px tall. Place them so feet rest on groundY.
-    this.player = this.physics.add.sprite(120, groundY - 50, 'p1_stand')
+    // Player sprite is ~92px tall (p1_stand). Spawn above ground, gravity pulls them down.
+    this.player = this.physics.add.sprite(120, groundY - 60, 'p1_stand')
       .setDepth(10).setCollideWorldBounds(true);
-    (this.player.body as Phaser.Physics.Arcade.Body).setGravityY(800);
-    // Shrink player hitbox slightly so they fit between obstacles
-    (this.player.body as Phaser.Physics.Arcade.Body).setSize(40, 80);
-    (this.player.body as Phaser.Physics.Arcade.Body).setOffset(13, 10);
-    this.physics.add.collider(this.player, this.groundBody);
+    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+    playerBody.setGravityY(800);
+    // Tighter hitbox: 40px wide, 70px tall, offset to center on sprite
+    playerBody.setSize(40, 70);
+    playerBody.setOffset(13, 20);
+    this.physics.add.collider(this.player, groundPlatform);
 
     // === Obstacle group ===
     this.obstacles = this.physics.add.group({ runChildUpdate: false });
