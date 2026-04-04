@@ -11,6 +11,17 @@ export default class LobbyScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.scale;
 
+    // Check if game already launched
+    const sessionState = this.registry.get('sessionState');
+    if (sessionState) {
+      const status = sessionState.session?.status;
+      if (status === 'running' || status === 'checkpoint_active') {
+        this.registry.set('totalCheckpoints', sessionState.session.totalCheckpoints);
+        this.scene.start('RunnerScene');
+        return;
+      }
+    }
+
     this.add.text(width / 2, 60, 'Waiting for game to start', {
       fontSize: '20px',
       color: '#ffffff',
@@ -32,7 +43,7 @@ export default class LobbyScene extends Phaser.Scene {
       },
     });
 
-    // Listen for game launched
+    // Listen for game_launched from polling transitions
     const onMessage = this.registry.get('onMessage');
     if (onMessage) {
       onMessage((msg: { type: string; totalCheckpoints?: number; playerId?: string; displayName?: string }) => {
@@ -45,6 +56,16 @@ export default class LobbyScene extends Phaser.Scene {
         }
       });
     }
+
+    // Also watch for state changes (polling updates sessionState in registry)
+    this.registry.events.on('changedata-sessionState', (_parent: unknown, value: any) => {
+      if (!value || !this.scene.isActive('LobbyScene')) return;
+      const status = value.session?.status;
+      if (status === 'running' || status === 'checkpoint_active') {
+        this.registry.set('totalCheckpoints', value.session.totalCheckpoints);
+        this.scene.start('RunnerScene');
+      }
+    });
   }
 
   private addPlayerAvatar(playerId: string, name: string): void {
@@ -61,7 +82,6 @@ export default class LobbyScene extends Phaser.Scene {
       color: '#cccccc',
     }).setOrigin(0.5, 0);
 
-    // Bounce-in animation
     rect.setScale(0);
     this.tweens.add({
       targets: rect,

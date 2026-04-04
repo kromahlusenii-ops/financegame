@@ -5,7 +5,7 @@ const POLL_INTERVAL = 1500;
 
 type MessageHandler = (message: any) => void;
 
-interface SessionState {
+export interface SessionState {
   session: {
     id: string;
     status: 'lobby' | 'running' | 'checkpoint_active' | 'ended';
@@ -44,29 +44,8 @@ function detectTransitions(prev: SessionState | null, next: SessionState): any[]
   const messages: any[] = [];
   const nextStatus = next.session.status;
 
-  // First poll — synthesize events based on current state
+  // First poll — no synthetic events. Scenes self-initialize from state in the registry.
   if (!prev) {
-    if (nextStatus === 'running' || nextStatus === 'checkpoint_active') {
-      messages.push({
-        type: 'game_launched',
-        totalCheckpoints: next.session.totalCheckpoints,
-      });
-    }
-    if (nextStatus === 'checkpoint_active' && next.checkpoint) {
-      messages.push({
-        type: 'checkpoint_start',
-        checkpointIndex: next.checkpoint.checkpointIndex,
-        question: next.checkpoint.question,
-        options: next.checkpoint.options,
-        timerSeconds: next.checkpoint.timerSeconds,
-      });
-    }
-    if (nextStatus === 'ended' && next.finalLeaderboard) {
-      messages.push({
-        type: 'session_ended',
-        finalLeaderboard: next.finalLeaderboard,
-      });
-    }
     return messages;
   }
 

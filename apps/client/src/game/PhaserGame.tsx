@@ -18,7 +18,7 @@ interface PhaserGameProps {
 export default function PhaserGame({ role, playerId, sessionId }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  const { onMessage, trackPosition } = useSessionPolling(sessionId);
+  const { onMessage, trackPosition, state } = useSessionPolling(sessionId);
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) return;
@@ -44,6 +44,13 @@ export default function PhaserGame({ role, playerId, sessionId }: PhaserGameProp
       gameRef.current = null;
     };
   }, []);
+
+  // Push session state into the Phaser registry whenever it changes
+  useEffect(() => {
+    if (gameRef.current && state) {
+      gameRef.current.registry.set('sessionState', state);
+    }
+  }, [state]);
 
   return (
     <div

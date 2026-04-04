@@ -43,6 +43,22 @@ export default function Lobby() {
     return unsub;
   }, [state, onMessage, navigate, playerId]);
 
+  // Navigate to game if session already launched (detected via polling state)
+  useEffect(() => {
+    if (!state || !playerId || !sessionState) return;
+    const status = sessionState.session.status;
+    if (status === 'running' || status === 'checkpoint_active') {
+      navigate('/game', {
+        state: {
+          playerId,
+          sessionId: state.sessionId,
+          totalCheckpoints: sessionState.session.totalCheckpoints,
+          role: 'student',
+        },
+      });
+    }
+  }, [sessionState, state, playerId, navigate]);
+
   // Join via HTTP POST immediately
   useEffect(() => {
     if (state && !joinedRef.current) {

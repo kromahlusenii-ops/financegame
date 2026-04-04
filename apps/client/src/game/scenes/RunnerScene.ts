@@ -56,7 +56,18 @@ export default class RunnerScene extends Phaser.Scene {
     const spaceKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     spaceKey?.on('down', () => this.jump());
 
-    // Listen for WS messages
+    // Check if checkpoint is already active (rejoining mid-game)
+    const sessionState = this.registry.get('sessionState');
+    if (sessionState?.session?.status === 'checkpoint_active' && sessionState.checkpoint) {
+      this.freezeForCheckpoint({
+        checkpointIndex: sessionState.checkpoint.checkpointIndex,
+        question: sessionState.checkpoint.question,
+        options: sessionState.checkpoint.options,
+        timerSeconds: sessionState.checkpoint.timerSeconds,
+      });
+    }
+
+    // Listen for polling messages
     const onMessage = this.registry.get('onMessage');
     if (onMessage) {
       onMessage((msg: {

@@ -15,29 +15,44 @@ export default class BootScene extends Phaser.Scene {
     this.createTexture('sky2', 2, 2, 0x1a1a3e);
     this.createTexture('sky3', 2, 2, 0x252550);
 
-    // Wait for WS connected signal
-    const wsConnected = this.registry.get('wsConnected');
-    if (wsConnected) {
-      this.scene.start('LobbyScene');
-    } else {
-      this.registry.events.on('changedata-wsConnected', (_parent: unknown, value: boolean) => {
-        if (value) {
-          this.scene.start('LobbyScene');
-        }
-      });
-      // Fallback - start lobby after short delay
-      this.time.delayedCall(2000, () => {
-        if (this.scene.isActive('BootScene')) {
-          this.scene.start('LobbyScene');
-        }
-      });
-    }
-
     const { width, height } = this.scale;
     this.add.text(width / 2, height / 2, 'Loading...', {
       fontSize: '24px',
       color: '#ffffff',
     }).setOrigin(0.5);
+
+    // Check session state — skip to the right scene
+    const sessionState = this.registry.get('sessionState');
+    if (sessionState) {
+      this.routeToScene(sessionState);
+      return;
+    }
+
+    // If no state yet, listen for it to arrive from polling
+    this.registry.events.on('changedata-sessionState', (_parent: unknown, value: any) => {
+      if (value && this.scene.isActive('BootScene')) {
+        this.routeToScene(value);
+      }
+    });
+
+    // Fallback: go to LobbyScene after 3s if nothing happens
+    this.time.delayedCall(3000, () => {
+      if (this.scene.isActive('BootScene')) {
+        this.scene.start('LobbyScene');
+      }
+    });
+  }
+
+  private routeToScene(sessionState: any): void {
+    const status = sessionState?.session?.status;
+    if (status === 'running' || status === 'checkpoint_active') {
+      this.scene.start('RunnerScene');
+    } else if (status === 'ended') {
+      this.registry.set('finalLeaderboard', sessionState.finalLeaderboard);
+      this.scene.start('LeaderboardScene');
+    } else {
+      this.scene.start('LobbyScene');
+    }
   }
 
   private createTexture(key: string, w: number, h: number, color: number): void {
