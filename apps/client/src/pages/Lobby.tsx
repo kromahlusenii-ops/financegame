@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useGameChannel } from '../ws/useGameChannel';
+import { useSessionPolling } from '../ws/useSessionPolling';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -15,12 +15,12 @@ export default function Lobby() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as LobbyState | null;
-  const { onMessage, isConnected } = useGameChannel(state?.sessionId || null);
-  const [players, setPlayers] = useState<{ id: string; name: string }[]>([]);
+  const { onMessage, state: sessionState } = useSessionPolling(state?.sessionId || null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const joinedRef = useRef(false);
 
+  // Listen for game_launched to navigate
   useEffect(() => {
     if (!state) {
       navigate('/join');
@@ -28,33 +28,22 @@ export default function Lobby() {
     }
 
     const unsub = onMessage((msg: any) => {
-      switch (msg.type) {
-        case 'player_joined':
-          setPlayers(prev => {
-            if (prev.some(p => p.id === msg.playerId)) return prev;
-            return [...prev, { id: msg.playerId, name: msg.displayName }];
-          });
-          break;
-        case 'player_left':
-          setPlayers(prev => prev.filter(p => p.id !== msg.playerId));
-          break;
-        case 'game_launched':
-          navigate('/game', {
-            state: {
-              playerId,
-              sessionId: state.sessionId,
-              totalCheckpoints: msg.totalCheckpoints,
-              role: 'student',
-            },
-          });
-          break;
+      if (msg.type === 'game_launched') {
+        navigate('/game', {
+          state: {
+            playerId,
+            sessionId: state.sessionId,
+            totalCheckpoints: msg.totalCheckpoints,
+            role: 'student',
+          },
+        });
       }
     });
 
     return unsub;
   }, [state, onMessage, navigate, playerId]);
 
-  // Join via HTTP POST immediately (don't wait for realtime)
+  // Join via HTTP POST immediately
   useEffect(() => {
     if (state && !joinedRef.current) {
       joinedRef.current = true;
@@ -82,15 +71,15 @@ export default function Lobby() {
 
       const data = await res.json();
       setPlayerId(data.playerId);
-      if (data.players) {
-        setPlayers(data.players.map((p: any) => ({ id: p.id, name: p.name || p.display_name || p.displayName })));
-      }
     } catch {
       setError('Could not connect to server');
     }
   }
 
   if (!state) return null;
+
+  // Player list from polling state
+  const players = sessionState?.players ?? [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 flex flex-col items-center justify-center px-4">
@@ -110,7 +99,7 @@ export default function Lobby() {
         <div className="bg-white/5 rounded-xl p-4 mb-4">
           <p className="text-purple-300 text-sm mb-2">Players ({players.length})</p>
           <div className="flex flex-wrap gap-2 justify-center">
-            {players.map(p => (
+            {players.map((p) => (
               <span
                 key={p.id}
                 className={`px-3 py-1 rounded-full text-sm ${
@@ -119,15 +108,11 @@ export default function Lobby() {
                     : 'bg-white/10 text-purple-200'
                 }`}
               >
-                {p.name}
+                {p.displayName}
               </span>
             ))}
           </div>
         </div>
-
-        {!isConnected && (
-          <p className="text-yellow-300 text-sm">Connecting...</p>
-        )}
       </div>
     </div>
   );

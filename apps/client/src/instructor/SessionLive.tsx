@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getAuthHeaders } from '../lib/supabase';
-import { useGameChannel } from '../ws/useGameChannel';
+import { useSessionPolling } from '../ws/useSessionPolling';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function SessionLive() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { onMessage } = useGameChannel(id || null);
+  const { onMessage, state: sessionState } = useSessionPolling(id || null);
 
   const [playersAlive, setPlayersAlive] = useState(0);
   const [currentCheckpoint, setCurrentCheckpoint] = useState(-1);
@@ -18,13 +18,25 @@ export default function SessionLive() {
   const [totalAlive, setTotalAlive] = useState(0);
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [distribution, setDistribution] = useState<Record<number, number>>({});
-  const [eliminations, setEliminations] = useState<{ playerId: string; displayName: string }[]>([]);
+  const [eliminations, setEliminations] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
   const [startTime] = useState(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Direct state reads from polling (continuous updates)
+  useEffect(() => {
+    if (!sessionState) return;
+    setPlayersAlive(sessionState.players.filter((p) => p.status === 'alive').length);
+    setTotalCheckpoints(sessionState.session.totalCheckpoints);
+    if (sessionState.checkpoint) {
+      setAnsweredCount(sessionState.checkpoint.answeredCount);
+      setTotalAlive(sessionState.checkpoint.totalAlive);
+    }
+  }, [sessionState]);
+
+  // Transition events from polling
   useEffect(() => {
     const unsub = onMessage((msg: any) => {
       switch (msg.type) {
@@ -52,7 +64,6 @@ export default function SessionLive() {
           stopTimer();
           break;
         case 'session_ended':
-          setLeaderboard(msg.finalLeaderboard || []);
           navigate(`/instructor/sessions/${id}/results`);
           break;
       }
@@ -177,7 +188,7 @@ export default function SessionLive() {
             <div className="bg-gray-800 rounded-xl p-6">
               <h3 className="text-lg font-semibold mb-4">Answer Distribution</h3>
               <div className="space-y-2">
-                {[0, 1, 2, 3].map(i => {
+                {[0, 1, 2, 3].map((i) => {
                   const count = distribution[i] || 0;
                   const total = Object.values(distribution).reduce((a, b) => a + b, 0);
                   const pct = total > 0 ? (count / total) * 100 : 0;

@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getAuthHeaders } from '../lib/supabase';
-import { useGameChannel } from '../ws/useGameChannel';
+import { useSessionPolling } from '../ws/useSessionPolling';
 import QRCode from 'qrcode';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -10,9 +10,8 @@ const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
 export default function SessionLobby() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { onMessage } = useGameChannel(id || null);
+  const { state: sessionState } = useSessionPolling(id || null);
   const [joinCode, setJoinCode] = useState('');
-  const [players, setPlayers] = useState<{ id: string; name: string }[]>([]);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const initialized = useRef(false);
@@ -45,47 +44,11 @@ export default function SessionLobby() {
     }
   }
 
-  // Poll for players from DB every 3 seconds as a reliable fallback
-  const pollPlayers = useCallback(async (code: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/join/${code}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.players && data.players.length > 0) {
-          setPlayers(data.players);
-        }
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  useEffect(() => {
-    if (!joinCode) return;
-    // Poll immediately and then every 3s
-    pollPlayers(joinCode);
-    const interval = setInterval(() => pollPlayers(joinCode), 3000);
-    return () => clearInterval(interval);
-  }, [joinCode, pollPlayers]);
-
-  // Also listen for realtime broadcasts (faster when it works)
-  useEffect(() => {
-    const unsub = onMessage((msg: any) => {
-      switch (msg.type) {
-        case 'lobby_update':
-          if (msg.players) setPlayers(msg.players);
-          break;
-        case 'player_joined':
-          setPlayers(prev => {
-            if (prev.some(p => p.id === msg.playerId)) return prev;
-            return [...prev, { id: msg.playerId, name: msg.displayName }];
-          });
-          break;
-        case 'player_left':
-          setPlayers(prev => prev.filter(p => p.id !== msg.playerId));
-          break;
-      }
-    });
-    return unsub;
-  }, [onMessage]);
+  // Players come from polling state
+  const players = (sessionState?.players ?? []).map((p) => ({
+    id: p.id,
+    name: p.displayName,
+  }));
 
   async function launchGame() {
     setLoading(true);
@@ -148,7 +111,7 @@ export default function SessionLobby() {
                 <p className="text-gray-500 text-center py-8">Waiting for players to join...</p>
               ) : (
                 <div className="space-y-2">
-                  {players.map(p => (
+                  {players.map((p) => (
                     <div key={p.id} className="flex items-center gap-2 px-3 py-2 bg-gray-700 rounded-lg">
                       <div className="w-3 h-3 rounded-full bg-green-400" />
                       <span>{p.name}</span>
