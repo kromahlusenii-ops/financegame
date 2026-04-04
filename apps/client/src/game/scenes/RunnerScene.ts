@@ -18,12 +18,14 @@ export default class RunnerScene extends Phaser.Scene {
   private clouds: Phaser.GameObjects.Image[] = [];
   private ghosts = new Map<string, GhostPlayer>();
   private obstacles!: Phaser.Physics.Arcade.Group;
+  private platforms!: Phaser.Physics.Arcade.Group;
   private collectibles!: Phaser.Physics.Arcade.Group;
 
   private scrollSpeed = 0;
   private isRunning = false;
   private gameStarted = false;
   private obstacleTimer = 0;
+  private coinTrailTimer = 0;
   private obstaclesCleared = 0;
   private currentCheckpointIndex = 0;
   private positionBroadcastTimer = 0;
@@ -95,7 +97,11 @@ export default class RunnerScene extends Phaser.Scene {
 
     // === Obstacle group ===
     this.obstacles = this.physics.add.group({ runChildUpdate: false });
+    this.platforms = this.physics.add.group({ runChildUpdate: false });
     this.collectibles = this.physics.add.group({ runChildUpdate: false });
+
+    // Player can stand on platforms (collider, not overlap)
+    this.physics.add.collider(this.player, this.platforms);
 
     // Obstacle collision → stumble
     this.physics.add.overlap(this.player, this.obstacles, (_p, obs) => {
@@ -210,7 +216,7 @@ export default class RunnerScene extends Phaser.Scene {
       }
     }
 
-    // Clean up off-screen obstacles
+    // Clean up off-screen obstacles & platforms
     this.obstacles.getChildren().forEach((obs) => {
       const img = obs as Phaser.Physics.Arcade.Image;
       if (img.x < -100) {
@@ -218,16 +224,27 @@ export default class RunnerScene extends Phaser.Scene {
         this.obstaclesCleared++;
       }
     });
+    this.platforms.getChildren().forEach((p) => {
+      const img = p as Phaser.Physics.Arcade.Image;
+      if (img.x < -100) img.destroy();
+    });
     this.collectibles.getChildren().forEach((c) => {
       const img = c as Phaser.Physics.Arcade.Image;
       if (img.x < -100) img.destroy();
     });
 
-    // Spawn obstacles
+    // Spawn obstacles (faster interval for more Mario-like feel)
     this.obstacleTimer += delta;
-    if (this.obstacleTimer > 2500) {
+    if (this.obstacleTimer > 1800) {
       this.obstacleTimer = 0;
       this.spawnObstacle();
+    }
+
+    // Spawn coin trails between obstacles
+    this.coinTrailTimer += delta;
+    if (this.coinTrailTimer > 1200) {
+      this.coinTrailTimer = 0;
+      this.spawnCoinPattern();
     }
 
     // Landing detection
@@ -366,31 +383,32 @@ export default class RunnerScene extends Phaser.Scene {
 
     const cleared = this.obstaclesCleared;
     let maxTier = 1;
-    if (cleared >= 12) maxTier = 3;
-    else if (cleared >= 5) maxTier = 2;
+    if (cleared >= 12) maxTier = 4;
+    else if (cleared >= 5) maxTier = 3;
+    else if (cleared >= 2) maxTier = 2;
 
     const roll = Math.random();
     let obsType: string;
 
-    if (maxTier >= 3 && roll < 0.15) {
+    if (maxTier >= 4 && roll < 0.10) {
       obsType = 'slime';
-    } else if (maxTier >= 2 && roll < 0.3) {
+    } else if (maxTier >= 3 && roll < 0.20) {
       obsType = 'fly';
-    } else if (maxTier >= 2 && roll < 0.45) {
+    } else if (maxTier >= 3 && roll < 0.30) {
       obsType = 'doubleBox';
-    } else if (roll < 0.6) {
+    } else if (maxTier >= 2 && roll < 0.45) {
+      obsType = 'platform';
+    } else if (maxTier >= 2 && roll < 0.55) {
+      obsType = 'coinBox';
+    } else if (roll < 0.70) {
+      obsType = 'mushroom';
+    } else if (roll < 0.85) {
       obsType = 'spikes';
     } else {
       obsType = 'box';
     }
 
     const speed = this.scrollSpeed || 200;
-
-    // Obstacles sit ON the ground: bottom edge at groundY
-    // box is 70x70, so center at groundY - 35
-    // spikes image is ~30px visible height at 0.7 scale
-    // player is ~92px tall, feet at groundY, head at groundY - 92
-    // Obstacle must be taller than player body (80px hitbox) to force a jump
 
     switch (obsType) {
       case 'box': {
@@ -401,12 +419,10 @@ export default class RunnerScene extends Phaser.Scene {
         break;
       }
       case 'spikes': {
-        // Spikes are short — place them on the ground
         const obs = this.physics.add.image(spawnX, groundY - 25, 'spikes').setDepth(8).setScale(0.6);
         this.obstacles.add(obs);
         (obs.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
         (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
-        // Smaller hitbox for spikes (player needs to jump over)
         (obs.body as Phaser.Physics.Arcade.Body).setSize(40, 30);
         break;
       }
@@ -420,7 +436,6 @@ export default class RunnerScene extends Phaser.Scene {
         break;
       }
       case 'slime': {
-        // Slime is 50x28, sits on ground
         const slime = this.physics.add.sprite(spawnX, groundY - 14, 'slimeWalk1').setDepth(8);
         slime.play('slime_walk');
         this.obstacles.add(slime);
@@ -429,7 +444,6 @@ export default class RunnerScene extends Phaser.Scene {
         break;
       }
       case 'fly': {
-        // Fly hovers above player head height so they must duck or time jumps
         const flyY = groundY - Phaser.Math.Between(70, 130);
         const fly = this.physics.add.sprite(spawnX, flyY, 'flyFly1').setDepth(8);
         fly.play('fly_hover');
@@ -446,27 +460,65 @@ export default class RunnerScene extends Phaser.Scene {
         });
         break;
       }
+      // --- New jumpable types ---
+      case 'platform': {
+        // Floating grass platform the player can land on, with coins on top
+        const platY = groundY - Phaser.Math.Between(90, 150);
+        const tiles = ['grassHalfLeft', 'grassHalfMid', 'grassHalfRight'];
+        for (let i = 0; i < 3; i++) {
+          const tile = this.physics.add.image(spawnX + i * 70, platY, tiles[i]).setDepth(8);
+          this.platforms.add(tile);
+          const body = tile.body as Phaser.Physics.Arcade.Body;
+          body.setAllowGravity(false);
+          body.setVelocityX(-speed);
+          body.setImmovable(true);
+        }
+        // Coins on top of platform
+        for (let i = 0; i < 3; i++) {
+          this.spawnCoin(spawnX + i * 70, platY - 40, speed);
+        }
+        break;
+      }
+      case 'coinBox': {
+        // Mario-style ? box — player can stand on it, coins above
+        const boxY = groundY - Phaser.Math.Between(80, 120);
+        const cBox = this.physics.add.image(spawnX, boxY, 'boxCoin').setDepth(8);
+        this.platforms.add(cBox);
+        const cBody = cBox.body as Phaser.Physics.Arcade.Body;
+        cBody.setAllowGravity(false);
+        cBody.setVelocityX(-speed);
+        cBody.setImmovable(true);
+        // Coins above the box
+        this.spawnCoin(spawnX, boxY - 50, speed);
+        this.spawnCoin(spawnX, boxY - 90, speed);
+        break;
+      }
+      case 'mushroom': {
+        // Mushroom on the ground — player can jump on it
+        const mush = this.physics.add.image(spawnX, groundY - 20, 'mushroomRed').setDepth(8);
+        this.platforms.add(mush);
+        const mBody = mush.body as Phaser.Physics.Arcade.Body;
+        mBody.setAllowGravity(false);
+        mBody.setVelocityX(-speed);
+        mBody.setImmovable(true);
+        // Coin arc above mushroom
+        for (let i = 0; i < 3; i++) {
+          const arcY = groundY - 80 - Math.sin((i / 2) * Math.PI) * 50;
+          this.spawnCoin(spawnX + i * 50, arcY, speed);
+        }
+        break;
+      }
     }
 
-    // Spawn collectible near obstacle
-    this.maybeSpawnCollectible(spawnX, groundY);
+    // Spawn collectible near obstacle (for non-platform types)
+    if (!['platform', 'coinBox', 'mushroom'].includes(obsType)) {
+      this.maybeSpawnCollectible(spawnX, groundY);
+    }
   }
 
   // === Collectibles ===
-  private maybeSpawnCollectible(x: number, groundY: number): void {
-    const roll = Math.random();
-    let key: string;
-    let pts: number;
-
-    if (roll < 0.35) { key = 'coinGold'; pts = 10; }
-    else if (roll < 0.50) { key = 'coinSilver'; pts = 5; }
-    else if (roll < 0.58) { key = 'gemBlue'; pts = 25; }
-    else if (roll < 0.61) { key = 'gemRed'; pts = 50; }
-    else { return; }
-
-    const speed = this.scrollSpeed || 200;
-    const coin = this.physics.add.image(x + Phaser.Math.Between(-30, 60), groundY - 120, key)
-      .setDepth(9).setScale(0.5);
+  private spawnCoin(x: number, y: number, speed: number, key = 'coinGold', pts = 10): void {
+    const coin = this.physics.add.image(x, y, key).setDepth(9).setScale(0.5);
     coin.setData('points', pts);
     this.collectibles.add(coin);
     (coin.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
@@ -480,6 +532,59 @@ export default class RunnerScene extends Phaser.Scene {
       repeat: -1,
       ease: 'Sine.easeInOut',
     });
+  }
+
+  private spawnCoinPattern(): void {
+    const { width } = this.scale;
+    const groundY = this.groundY;
+    const speed = this.scrollSpeed || 200;
+    const spawnX = width + 80;
+
+    const roll = Math.random();
+
+    if (roll < 0.35) {
+      // Horizontal trail of coins at ground level
+      const y = groundY - Phaser.Math.Between(60, 100);
+      const count = Phaser.Math.Between(3, 6);
+      for (let i = 0; i < count; i++) {
+        this.spawnCoin(spawnX + i * 45, y, speed);
+      }
+    } else if (roll < 0.60) {
+      // Coin arc (jump arc shape)
+      const count = 5;
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1);
+        const arcY = groundY - 60 - Math.sin(t * Math.PI) * 100;
+        this.spawnCoin(spawnX + i * 40, arcY, speed);
+      }
+    } else if (roll < 0.80) {
+      // Vertical column of coins
+      for (let i = 0; i < 4; i++) {
+        this.spawnCoin(spawnX, groundY - 50 - i * 35, speed);
+      }
+    } else {
+      // Gem with surrounding coins (rare bonus cluster)
+      const y = groundY - Phaser.Math.Between(80, 130);
+      this.spawnCoin(spawnX, y, speed, 'gemBlue', 25);
+      this.spawnCoin(spawnX - 35, y, speed);
+      this.spawnCoin(spawnX + 35, y, speed);
+      this.spawnCoin(spawnX, y - 35, speed);
+    }
+  }
+
+  private maybeSpawnCollectible(x: number, groundY: number): void {
+    const roll = Math.random();
+    let key: string;
+    let pts: number;
+
+    if (roll < 0.45) { key = 'coinGold'; pts = 10; }
+    else if (roll < 0.65) { key = 'coinSilver'; pts = 5; }
+    else if (roll < 0.75) { key = 'gemBlue'; pts = 25; }
+    else if (roll < 0.80) { key = 'gemRed'; pts = 50; }
+    else { return; }
+
+    const speed = this.scrollSpeed || 200;
+    this.spawnCoin(x + Phaser.Math.Between(-30, 60), groundY - 120, speed, key, pts);
   }
 
   private collectItem(coin: Phaser.Physics.Arcade.Image): void {
@@ -567,9 +672,12 @@ export default class RunnerScene extends Phaser.Scene {
     this.player.stop();
     this.player.setTexture('p1_stand');
 
-    // Stop all obstacles
+    // Stop all obstacles, platforms, and collectibles
     this.obstacles.getChildren().forEach((obs) => {
       (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(0);
+    });
+    this.platforms.getChildren().forEach((p) => {
+      (p.body as Phaser.Physics.Arcade.Body).setVelocityX(0);
     });
     this.collectibles.getChildren().forEach((c) => {
       (c.body as Phaser.Physics.Arcade.Body).setVelocityX(0);

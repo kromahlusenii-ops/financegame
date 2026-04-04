@@ -52,9 +52,17 @@ export default class BootScene extends Phaser.Scene {
     // Obstacles
     this.load.image('box', `${BASE}/Tiles/box.png`);
     this.load.image('boxCoin', `${BASE}/Tiles/boxCoin.png`);
+    this.load.image('boxCoinDisabled', `${BASE}/Tiles/boxCoinAlt_disabled.png`);
     this.load.image('boxExplosive', `${BASE}/Tiles/boxExplosive.png`);
     this.load.image('spikes', `${BASE}/Items/spikes.png`);
     this.load.image('rock', `${BASE}/Items/rock.png`);
+
+    // Platforms (jumpable)
+    this.load.image('grassHalfLeft', `${BASE}/Tiles/grassHalfLeft.png`);
+    this.load.image('grassHalfMid', `${BASE}/Tiles/grassHalfMid.png`);
+    this.load.image('grassHalfRight', `${BASE}/Tiles/grassHalfRight.png`);
+    this.load.image('mushroomRed', `${BASE}/Items/mushroomRed.png`);
+    this.load.image('springboardUp', `${BASE}/Items/springboardUp.png`);
 
     // Enemies
     this.load.image('slimeWalk1', `${BASE}/Enemies/slimeWalk1.png`);
