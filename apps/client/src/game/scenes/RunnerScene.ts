@@ -40,12 +40,21 @@ export default class RunnerScene extends Phaser.Scene {
   private checkpointFlag: Phaser.GameObjects.Image | null = null;
   private groundY = 0;
 
-  // Variable-height jump state
+  // Jump tuning — Numbers Policy: Starting values with test plan
+  // Initial velocity: -650. Test: player clears single box (70px) 9/10 taps. If fail >20%, increase by 50.
+  // Hold max: 180ms. Test: full hold clears doubleBox (140px). If fail >20%, increase by 30ms.
+  // Coyote time: 100ms (Source: Maddy Thorson's Celeste postmortem, 80-150ms range)
+  // Jump buffer: 150ms (Source: same, 100-200ms range)
   private isJumpHeld = false;
   private jumpHoldTime = 0;
-  private readonly JUMP_INITIAL_VELOCITY = -600;
-  private readonly JUMP_HOLD_BOOST = -30;         // extra upward nudge per frame while held
-  private readonly JUMP_HOLD_MAX_MS = 200;        // max hold duration in ms
+  private coyoteTimer = 0;
+  private jumpBufferTimer = 0;
+  private jumpRequested = false;
+  private readonly JUMP_VELOCITY = -650;
+  private readonly JUMP_HOLD_EXTRA = -900;        // additional upward acceleration while held (per second)
+  private readonly JUMP_HOLD_MAX_MS = 180;
+  private readonly COYOTE_TIME_MS = 100;
+  private readonly JUMP_BUFFER_MS = 150;
 
   constructor() {
     super({ key: 'RunnerScene' });
@@ -89,7 +98,10 @@ export default class RunnerScene extends Phaser.Scene {
     this.player = this.physics.add.sprite(120, groundY - 60, 'p1_stand')
       .setDepth(10).setCollideWorldBounds(true);
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    playerBody.setGravityY(800);
+    // Extra gravity on top of global 800 = total 1400 for snappy, non-floaty fall.
+    // Starting value. Test: jump arc feels fast and responsive, not moon-like.
+    // If too fast, reduce by 200.
+    playerBody.setGravityY(600);
     // Tighter hitbox: 40px wide, 70px tall, offset to center on sprite
     playerBody.setSize(40, 70);
     playerBody.setOffset(13, 20);
@@ -100,8 +112,13 @@ export default class RunnerScene extends Phaser.Scene {
     this.platforms = this.physics.add.group({ runChildUpdate: false });
     this.collectibles = this.physics.add.group({ runChildUpdate: false });
 
-    // Player can stand on platforms (collider, not overlap)
-    this.physics.add.collider(this.player, this.platforms);
+    // Player can stand on platforms — one-way: only collide from above
+    this.physics.add.collider(this.player, this.platforms, undefined, (player, platform) => {
+      const pBody = (player as Phaser.Physics.Arcade.Sprite).body as Phaser.Physics.Arcade.Body;
+      const platBody = (platform as Phaser.Physics.Arcade.Image).body as Phaser.Physics.Arcade.Body;
+      // Only collide if player is falling and feet are above platform top
+      return pBody.velocity.y >= 0 && pBody.bottom <= platBody.top + 10;
+    });
 
     // Obstacle collision → stumble
     this.physics.add.overlap(this.player, this.obstacles, (_p, obs) => {
@@ -188,12 +205,36 @@ export default class RunnerScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.isRunning || !this.gameStarted) return;
 
-    // Variable-height jump: holding the button adds upward boost each frame
+    // --- Jump system: coyote time + buffer + variable height ---
+    const grounded = this.isGrounded();
+
+    // Track coyote time: how long since last grounded
+    if (grounded) {
+      this.coyoteTimer = 0;
+    } else {
+      this.coyoteTimer += delta;
+    }
+
+    // Track jump buffer: how long since jump was requested
+    if (this.jumpRequested) {
+      this.jumpBufferTimer += delta;
+      if (this.jumpBufferTimer > this.JUMP_BUFFER_MS) {
+        this.jumpRequested = false; // buffer expired
+      }
+    }
+
+    // Execute jump if: requested AND (grounded OR within coyote window)
+    const canJump = grounded || this.coyoteTimer < this.COYOTE_TIME_MS;
+    if (this.jumpRequested && canJump) {
+      this.executeJump();
+    }
+
+    // Variable height: hold adds upward force (frame-rate independent)
     if (this.isJumpHeld) {
       this.jumpHoldTime += delta;
       if (this.jumpHoldTime < this.JUMP_HOLD_MAX_MS) {
         const body = this.player.body as Phaser.Physics.Arcade.Body;
-        body.setVelocityY(body.velocity.y + this.JUMP_HOLD_BOOST);
+        body.setVelocityY(body.velocity.y + (this.JUMP_HOLD_EXTRA * delta) / 1000);
       } else {
         this.isJumpHeld = false;
       }
@@ -347,32 +388,37 @@ export default class RunnerScene extends Phaser.Scene {
     this.scoreText.setText(String(this.runScore));
   }
 
-  // === Jump (variable height: hold longer to jump higher) ===
+  // === Jump (with coyote time + jump buffer + variable height) ===
   private jump(): void {
+    // Request jump — will execute immediately if grounded, or buffer it
+    this.jumpRequested = true;
+    this.jumpBufferTimer = 0;
+  }
+
+  private executeJump(): void {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
-    if (body.touching.down || body.onFloor()) {
-      body.setVelocityY(this.JUMP_INITIAL_VELOCITY);
-      this.isJumpHeld = true;
-      this.jumpHoldTime = 0;
-      this.player.stop();
-      this.player.setTexture('p1_jump');
-      this.tweens.add({
-        targets: this.player,
-        scaleY: 1.1, scaleX: 0.9,
-        duration: 100, yoyo: true,
-      });
-    }
+    body.setVelocityY(this.JUMP_VELOCITY);
+    this.isJumpHeld = true;
+    this.jumpHoldTime = 0;
+    this.jumpRequested = false;
+    this.coyoteTimer = this.COYOTE_TIME_MS + 1; // consume coyote time
+    this.player.stop();
+    this.player.setTexture('p1_jump');
+    this.tweens.add({
+      targets: this.player,
+      scaleY: 1.1, scaleX: 0.9,
+      duration: 100, yoyo: true,
+    });
   }
 
   private releaseJump(): void {
-    if (this.isJumpHeld) {
-      this.isJumpHeld = false;
-      // Cut upward velocity on early release for a short hop
-      const body = this.player.body as Phaser.Physics.Arcade.Body;
-      if (body.velocity.y < 0) {
-        body.setVelocityY(body.velocity.y * 0.5);
-      }
-    }
+    this.isJumpHeld = false;
+    this.jumpRequested = false;
+  }
+
+  private isGrounded(): boolean {
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    return body.touching.down || body.onFloor();
   }
 
   // === Obstacles ===
