@@ -38,6 +38,13 @@ export default class RunnerScene extends Phaser.Scene {
   private checkpointFlag: Phaser.GameObjects.Image | null = null;
   private groundY = 0;
 
+  // Variable-height jump state
+  private isJumpHeld = false;
+  private jumpHoldTime = 0;
+  private readonly JUMP_INITIAL_VELOCITY = -420;
+  private readonly JUMP_HOLD_FORCE = -1200;      // additional upward acceleration while held
+  private readonly JUMP_HOLD_MAX_MS = 250;        // max hold duration in ms
+
   constructor() {
     super({ key: 'RunnerScene' });
   }
@@ -109,6 +116,10 @@ export default class RunnerScene extends Phaser.Scene {
         this.jump();
       }
     });
+    this.input.on('pointerup', () => {
+      this.releaseJump();
+    });
+
     const spaceKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     spaceKey?.on('down', () => {
       if (!this.gameStarted) {
@@ -116,6 +127,9 @@ export default class RunnerScene extends Phaser.Scene {
       } else {
         this.jump();
       }
+    });
+    spaceKey?.on('up', () => {
+      this.releaseJump();
     });
 
     // === HUD ===
@@ -167,6 +181,17 @@ export default class RunnerScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (!this.isRunning || !this.gameStarted) return;
+
+    // Variable-height jump: apply extra force while button is held
+    if (this.isJumpHeld) {
+      this.jumpHoldTime += delta;
+      if (this.jumpHoldTime < this.JUMP_HOLD_MAX_MS) {
+        const body = this.player.body as Phaser.Physics.Arcade.Body;
+        body.setVelocityY(body.velocity.y + (this.JUMP_HOLD_FORCE * delta) / 1000);
+      } else {
+        this.isJumpHeld = false;
+      }
+    }
 
     const speed = 200 + this.currentCheckpointIndex * 15;
     this.scrollSpeed = speed;
@@ -289,14 +314,15 @@ export default class RunnerScene extends Phaser.Scene {
       this.hearts.push(heart);
     }
 
-    // Score
-    this.add.image(this.scale.width / 2 - 25, 30, 'hudCoins')
-      .setScale(0.4).setScrollFactor(0).setDepth(50);
-    this.scoreText = this.add.text(this.scale.width / 2, 22, '0', {
-      fontSize: '20px',
+    // Score – top center, large and prominent
+    this.add.image(this.scale.width / 2 - 30, 16, 'hudCoins')
+      .setScale(0.5).setScrollFactor(0).setDepth(50);
+    this.scoreText = this.add.text(this.scale.width / 2, 6, '0', {
+      fontSize: '28px',
+      fontStyle: 'bold',
       color: '#FFFFFF',
       stroke: '#000000',
-      strokeThickness: 3,
+      strokeThickness: 4,
     }).setScrollFactor(0).setDepth(50);
   }
 
@@ -304,11 +330,13 @@ export default class RunnerScene extends Phaser.Scene {
     this.scoreText.setText(String(this.runScore));
   }
 
-  // === Jump ===
+  // === Jump (variable height: hold longer to jump higher) ===
   private jump(): void {
     const body = this.player.body as Phaser.Physics.Arcade.Body;
     if (body.touching.down || body.onFloor()) {
-      body.setVelocityY(-500);
+      body.setVelocityY(this.JUMP_INITIAL_VELOCITY);
+      this.isJumpHeld = true;
+      this.jumpHoldTime = 0;
       this.player.stop();
       this.player.setTexture('p1_jump');
       this.tweens.add({
@@ -316,6 +344,17 @@ export default class RunnerScene extends Phaser.Scene {
         scaleY: 1.1, scaleX: 0.9,
         duration: 100, yoyo: true,
       });
+    }
+  }
+
+  private releaseJump(): void {
+    if (this.isJumpHeld) {
+      this.isJumpHeld = false;
+      // Cut upward velocity on early release for a short hop
+      const body = this.player.body as Phaser.Physics.Arcade.Body;
+      if (body.velocity.y < 0) {
+        body.setVelocityY(body.velocity.y * 0.5);
+      }
     }
   }
 
