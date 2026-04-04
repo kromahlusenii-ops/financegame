@@ -36,6 +36,7 @@ export default class RunnerScene extends Phaser.Scene {
   // Start overlay
   private startOverlay: Phaser.GameObjects.GameObject[] = [];
   private checkpointFlag: Phaser.GameObjects.Image | null = null;
+  private groundY = 0;
 
   constructor() {
     super({ key: 'RunnerScene' });
@@ -44,6 +45,7 @@ export default class RunnerScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.scale;
     const groundY = height - TILE_SIZE;
+    this.groundY = groundY;
 
     // === Background ===
     this.bgImage = this.add.tileSprite(0, 0, width, height, 'bgGrasslands')
@@ -67,14 +69,20 @@ export default class RunnerScene extends Phaser.Scene {
     this.dirtLayer = this.add.tileSprite(0, groundY + TILE_SIZE, width, TILE_SIZE, 'dirtCenter')
       .setOrigin(0, 0).setDepth(5);
 
-    // Invisible ground collision body
-    this.groundBody = this.physics.add.staticImage(width / 2, groundY + 35, 'grassMid')
+    // Invisible ground collision body — top edge at groundY
+    this.groundBody = this.physics.add.staticImage(width / 2, groundY + TILE_SIZE / 2, 'grassMid')
       .setDisplaySize(width * 2, TILE_SIZE).setVisible(false);
+    // Shift the physics body so its top edge is exactly at groundY
+    (this.groundBody.body as Phaser.Physics.Arcade.StaticBody).setOffset(0, 0);
 
     // === Player ===
-    this.player = this.physics.add.sprite(120, groundY - 48, 'p1_stand')
+    // Player sprite is ~92px tall. Place them so feet rest on groundY.
+    this.player = this.physics.add.sprite(120, groundY - 50, 'p1_stand')
       .setDepth(10).setCollideWorldBounds(true);
     (this.player.body as Phaser.Physics.Arcade.Body).setGravityY(800);
+    // Shrink player hitbox slightly so they fit between obstacles
+    (this.player.body as Phaser.Physics.Arcade.Body).setSize(40, 80);
+    (this.player.body as Phaser.Physics.Arcade.Body).setOffset(13, 10);
     this.physics.add.collider(this.player, this.groundBody);
 
     // === Obstacle group ===
@@ -312,8 +320,8 @@ export default class RunnerScene extends Phaser.Scene {
 
   // === Obstacles ===
   private spawnObstacle(): void {
-    const { width, height } = this.scale;
-    const groundY = height - TILE_SIZE;
+    const { width } = this.scale;
+    const groundY = this.groundY;
     const spawnX = width + 100;
 
     const cleared = this.obstaclesCleared;
@@ -338,6 +346,12 @@ export default class RunnerScene extends Phaser.Scene {
 
     const speed = this.scrollSpeed || 200;
 
+    // Obstacles sit ON the ground: bottom edge at groundY
+    // box is 70x70, so center at groundY - 35
+    // spikes image is ~30px visible height at 0.7 scale
+    // player is ~92px tall, feet at groundY, head at groundY - 92
+    // Obstacle must be taller than player body (80px hitbox) to force a jump
+
     switch (obsType) {
       case 'box': {
         const obs = this.physics.add.image(spawnX, groundY - 35, 'box').setDepth(8);
@@ -347,10 +361,13 @@ export default class RunnerScene extends Phaser.Scene {
         break;
       }
       case 'spikes': {
-        const obs = this.physics.add.image(spawnX, groundY - 20, 'spikes').setDepth(8).setScale(0.7);
+        // Spikes are short — place them on the ground
+        const obs = this.physics.add.image(spawnX, groundY - 25, 'spikes').setDepth(8).setScale(0.6);
         this.obstacles.add(obs);
         (obs.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
         (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
+        // Smaller hitbox for spikes (player needs to jump over)
+        (obs.body as Phaser.Physics.Arcade.Body).setSize(40, 30);
         break;
       }
       case 'doubleBox': {
@@ -363,6 +380,7 @@ export default class RunnerScene extends Phaser.Scene {
         break;
       }
       case 'slime': {
+        // Slime is 50x28, sits on ground
         const slime = this.physics.add.sprite(spawnX, groundY - 14, 'slimeWalk1').setDepth(8);
         slime.play('slime_walk');
         this.obstacles.add(slime);
@@ -371,7 +389,8 @@ export default class RunnerScene extends Phaser.Scene {
         break;
       }
       case 'fly': {
-        const flyY = groundY - Phaser.Math.Between(60, 110);
+        // Fly hovers above player head height so they must duck or time jumps
+        const flyY = groundY - Phaser.Math.Between(70, 130);
         const fly = this.physics.add.sprite(spawnX, flyY, 'flyFly1').setDepth(8);
         fly.play('fly_hover');
         this.obstacles.add(fly);
@@ -476,8 +495,7 @@ export default class RunnerScene extends Phaser.Scene {
   // === Ghosts ===
   private updateGhosts(positions: { playerId: string; positionX: number }[]): void {
     const myPlayerId = this.registry.get('playerId') as string;
-    const { height } = this.scale;
-    const groundY = height - TILE_SIZE;
+    const groundY = this.groundY;
 
     for (const pos of positions) {
       if (pos.playerId === myPlayerId) continue;
@@ -518,8 +536,8 @@ export default class RunnerScene extends Phaser.Scene {
     });
 
     // Slide flag in
-    const { width, height } = this.scale;
-    this.checkpointFlag = this.add.image(width + 50, height - TILE_SIZE - 50, 'flagRed').setDepth(15);
+    const { width } = this.scale;
+    this.checkpointFlag = this.add.image(width + 50, this.groundY - 35, 'flagRed').setDepth(15);
     this.tweens.add({
       targets: this.checkpointFlag,
       x: this.player.x + 60,
