@@ -16,70 +16,70 @@ export default class LeaderboardScene extends Phaser.Scene {
 
     // Title
     this.add.text(width / 2, 30, 'Final Results', {
-      fontSize: '28px',
+      fontSize: '24px',
       color: '#ffaa00',
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // Podium
-    if (leaderboard.length >= 1) {
-      this.createPodiumEntry(width / 2, 180, leaderboard[0], '#ffd700', 120);
-    }
+    // Podium — compact for mobile
+    const podiumY = 80;
+    const podiumW = 60;
+
     if (leaderboard.length >= 2) {
-      this.createPodiumEntry(width / 2 - 120, 210, leaderboard[1], '#c0c0c0', 90);
+      // Silver - left
+      this.createPodiumEntry(width / 2 - 80, podiumY, leaderboard[1], '#c0c0c0', 50, podiumW);
+    }
+    if (leaderboard.length >= 1) {
+      // Gold - center
+      this.createPodiumEntry(width / 2, podiumY - 20, leaderboard[0], '#ffd700', 70, podiumW);
     }
     if (leaderboard.length >= 3) {
-      this.createPodiumEntry(width / 2 + 120, 220, leaderboard[2], '#cd7f32', 80);
+      // Bronze - right
+      this.createPodiumEntry(width / 2 + 80, podiumY + 5, leaderboard[2], '#cd7f32', 40, podiumW);
     }
 
-    // Podium animation
-    const podiumElements = this.children.list.filter(
-      c => (c as Phaser.GameObjects.GameObject).getData?.('isPodium')
-    );
-
-    // Full leaderboard
-    const startY = 300;
-    const scrollable = this.add.container(0, 0);
+    // Full leaderboard list below podium
+    const startY = podiumY + 110;
+    const rowHeight = 32;
 
     leaderboard.forEach((entry, i) => {
-      const y = startY + i * 35;
+      const y = startY + i * rowHeight;
+      if (y > height - 70) return; // Don't render below play again button
+
       const isMe = entry.displayName === myPlayerId;
 
-      const bg = this.add.rectangle(width / 2, y, width - 40, 30, isMe ? 0x2ecc71 : 0x2a2a4a, 0.8)
-        .setOrigin(0.5);
+      this.add.rectangle(width / 2, y, width - 20, 28, isMe ? 0x2ecc71 : 0x2a2a4a, 0.8);
 
-      const rank = this.add.text(30, y, `#${entry.rank}`, {
-        fontSize: '14px',
+      this.add.text(15, y, `#${entry.rank}`, {
+        fontSize: '12px',
         color: '#888888',
         fontStyle: 'bold',
       }).setOrigin(0, 0.5);
 
-      const name = this.add.text(70, y, entry.displayName, {
-        fontSize: '14px',
+      this.add.text(45, y, entry.displayName, {
+        fontSize: '12px',
         color: isMe ? '#ffffff' : '#cccccc',
         fontStyle: isMe ? 'bold' : 'normal',
       }).setOrigin(0, 0.5);
 
-      const score = this.add.text(width - 30, y, `${entry.score} pts`, {
-        fontSize: '14px',
+      this.add.text(width - 15, y, `${entry.score} pts`, {
+        fontSize: '12px',
         color: '#ffaa00',
         fontStyle: 'bold',
       }).setOrigin(1, 0.5);
 
-      const status = this.add.text(width - 100, y, entry.survived ? 'Survived' : 'Eliminated', {
+      this.add.text(width - 75, y, entry.survived ? 'Survived' : 'Out', {
         fontSize: '10px',
         color: entry.survived ? '#2ecc71' : '#e74c3c',
       }).setOrigin(1, 0.5);
-
-      scrollable.add([bg, rank, name, score, status]);
     });
 
-    // Play Again button
-    const btnY = Math.max(startY + leaderboard.length * 35 + 30, height - 60);
-    const btn = this.add.rectangle(width / 2, btnY, 200, 50, 0x3498db)
+    // Play Again button — fixed at bottom
+    const btnY = height - 45;
+    const btn = this.add.rectangle(width / 2, btnY, 200, 44, 0x3498db)
       .setInteractive({ useHandCursor: true });
     this.add.text(width / 2, btnY, 'Play Again', {
-      fontSize: '18px',
+      fontSize: '16px',
       color: '#ffffff',
       fontStyle: 'bold',
     }).setOrigin(0.5);
@@ -91,49 +91,51 @@ export default class LeaderboardScene extends Phaser.Scene {
     btn.on('pointerout', () => btn.setFillStyle(0x3498db));
   }
 
-  private createPodiumEntry(x: number, baseY: number, entry: LeaderboardEntry, color: string, podiumHeight: number): void {
+  private createPodiumEntry(x: number, baseY: number, entry: LeaderboardEntry, color: string, podiumHeight: number, podiumWidth: number): void {
     // Podium block
-    const block = this.add.rectangle(x, baseY + podiumHeight / 2, 80, podiumHeight, Phaser.Display.Color.HexStringToColor(color).color, 0.8)
-      .setData('isPodium', true);
+    const block = this.add.rectangle(x, baseY + 40 + podiumHeight / 2, podiumWidth, podiumHeight,
+      Phaser.Display.Color.HexStringToColor(color).color, 0.8);
 
     // Animate rising
-    block.setScale(1, 0);
-    block.setOrigin(0.5, 0);
+    block.setScale(1, 0).setOrigin(0.5, 0);
     this.tweens.add({
       targets: block,
       scaleY: 1,
-      duration: 800,
+      duration: 600,
       ease: 'Bounce.easeOut',
-      delay: entry.rank === 1 ? 600 : entry.rank === 2 ? 300 : 0,
+      delay: entry.rank === 1 ? 400 : entry.rank === 2 ? 200 : 0,
     });
 
-    // Player avatar
-    const avatar = this.add.rectangle(x, baseY - 30, 28, 36, 0x00ff88);
+    // Player avatar above podium
+    const avatar = this.add.rectangle(x, baseY + 10, 20, 26, 0x00ff88);
     avatar.setAlpha(0);
     this.tweens.add({
       targets: avatar,
       alpha: 1,
-      y: baseY - 20,
-      duration: 500,
-      delay: entry.rank === 1 ? 1200 : entry.rank === 2 ? 900 : 600,
+      y: baseY + 15,
+      duration: 400,
+      delay: entry.rank === 1 ? 800 : entry.rank === 2 ? 600 : 400,
     });
 
-    // Rank number
-    this.add.text(x, baseY + 20, `#${entry.rank}`, {
-      fontSize: '20px',
+    // Rank
+    this.add.text(x, baseY + 50, `#${entry.rank}`, {
+      fontSize: '14px',
       color: '#ffffff',
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    // Name
-    this.add.text(x, baseY + podiumHeight + 10, entry.displayName, {
-      fontSize: '12px',
-      color: '#ffffff',
+    // Name below podium
+    const nameText = entry.displayName.length > 10
+      ? entry.displayName.slice(0, 9) + '…'
+      : entry.displayName;
+    this.add.text(x, baseY + 40 + podiumHeight + 8, nameText, {
+      fontSize: '10px',
+      color: '#cccccc',
     }).setOrigin(0.5);
 
     // Score
-    this.add.text(x, baseY + podiumHeight + 28, `${entry.score} pts`, {
-      fontSize: '11px',
+    this.add.text(x, baseY + 40 + podiumHeight + 22, `${entry.score}`, {
+      fontSize: '10px',
       color: '#ffaa00',
     }).setOrigin(0.5);
   }
