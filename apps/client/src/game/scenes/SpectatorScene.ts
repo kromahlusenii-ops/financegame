@@ -1,8 +1,12 @@
 import Phaser from 'phaser';
 
+const TILE_SIZE = 70;
+const GHOST_SKINS = ['p1', 'p2', 'p3'];
+
 export default class SpectatorScene extends Phaser.Scene {
-  private ghosts = new Map<string, Phaser.GameObjects.Rectangle>();
-  private ground!: Phaser.GameObjects.TileSprite;
+  private ghosts = new Map<string, Phaser.GameObjects.Sprite>();
+  private grassLayer!: Phaser.GameObjects.TileSprite;
+  private bgImage!: Phaser.GameObjects.TileSprite;
   private leaderboardTexts: Phaser.GameObjects.Text[] = [];
 
   constructor() {
@@ -11,47 +15,43 @@ export default class SpectatorScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.scale;
+    const groundY = height - TILE_SIZE;
 
     // Background
-    this.add.rectangle(width / 2, height / 2, width, height, 0x1a1a2e);
+    this.bgImage = this.add.tileSprite(0, 0, width, height, 'bgGrasslands')
+      .setOrigin(0, 0).setScrollFactor(0).setDepth(0);
 
     // Ground
-    this.ground = this.add.tileSprite(0, height - 32, width * 2, 32, 'ground')
-      .setOrigin(0, 0);
+    this.grassLayer = this.add.tileSprite(0, groundY, width, TILE_SIZE, 'grassMid')
+      .setOrigin(0, 0).setDepth(5);
+    this.add.tileSprite(0, groundY + TILE_SIZE, width, TILE_SIZE, 'dirtCenter')
+      .setOrigin(0, 0).setDepth(5);
 
-    // "You finished" banner
-    this.add.rectangle(width / 2, 30, width, 50, 0x000000, 0.7);
-    this.add.text(width / 2, 30, 'You have been eliminated - Spectating', {
+    // Eliminated banner
+    this.add.rectangle(width / 2, 30, width, 50, 0x000000, 0.7).setDepth(40);
+    this.add.text(width / 2, 30, 'Eliminated - Spectating', {
       fontSize: '16px',
       color: '#ff6666',
       fontStyle: 'bold',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(41);
 
     // Leaderboard sidebar
-    this.add.rectangle(width - 100, height / 2, 180, height, 0x000000, 0.5);
-    this.add.text(width - 100, 70, 'Leaderboard', {
-      fontSize: '14px',
+    this.add.rectangle(width - 90, height / 2, 170, height, 0x000000, 0.5).setDepth(40);
+    this.add.text(width - 90, 65, 'Leaderboard', {
+      fontSize: '13px',
       color: '#ffaa00',
       fontStyle: 'bold',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(41);
 
-    // Listen for updates
     const onMessage = this.registry.get('onMessage');
     if (onMessage) {
-      onMessage((msg: {
-        type: string;
-        positions?: { playerId: string; positionX: number }[];
-        leaderboard?: Array<{ rank: number; displayName: string; score: number }>;
-        finalLeaderboard?: unknown[];
-      }) => {
+      onMessage((msg: any) => {
         switch (msg.type) {
           case 'player_positions':
             this.updateGhosts(msg.positions || []);
             break;
           case 'checkpoint_results':
-            if (msg.leaderboard) {
-              this.updateLeaderboard(msg.leaderboard);
-            }
+            if (msg.leaderboard) this.updateLeaderboard(msg.leaderboard);
             break;
           case 'session_ended':
             this.registry.set('finalLeaderboard', msg.finalLeaderboard);
@@ -63,15 +63,22 @@ export default class SpectatorScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    this.ground.tilePositionX += (150 * delta) / 1000;
+    const speed = 150;
+    this.bgImage.tilePositionX += (speed * 0.1 * delta) / 1000;
+    this.grassLayer.tilePositionX += (speed * delta) / 1000;
   }
 
   private updateGhosts(positions: { playerId: string; positionX: number }[]): void {
     const { height } = this.scale;
+    const groundY = height - TILE_SIZE;
+
     for (const pos of positions) {
       if (!this.ghosts.has(pos.playerId)) {
-        const sprite = this.add.rectangle(pos.positionX, height - 68, 28, 36, 0x888888)
-          .setAlpha(0.6);
+        const skinIdx = this.ghosts.size % GHOST_SKINS.length;
+        const skin = GHOST_SKINS[skinIdx];
+        const sprite = this.add.sprite(pos.positionX, groundY - 48, `${skin}_stand`)
+          .setAlpha(0.5).setDepth(7);
+        sprite.play(`${skin}_run`);
         this.ghosts.set(pos.playerId, sprite);
       } else {
         const sprite = this.ghosts.get(pos.playerId)!;
@@ -82,16 +89,15 @@ export default class SpectatorScene extends Phaser.Scene {
 
   private updateLeaderboard(entries: Array<{ rank: number; displayName: string; score: number }>): void {
     const { width } = this.scale;
-
-    // Clear old texts
     for (const t of this.leaderboardTexts) t.destroy();
     this.leaderboardTexts = [];
 
-    entries.slice(0, 10).forEach((entry, i) => {
-      const text = this.add.text(width - 180, 95 + i * 22, `#${entry.rank} ${entry.displayName} - ${entry.score}`, {
-        fontSize: '11px',
+    entries.slice(0, 8).forEach((entry, i) => {
+      const text = this.add.text(width - 165, 85 + i * 22,
+        `#${entry.rank} ${entry.displayName.slice(0, 10)} ${entry.score}`, {
+        fontSize: '10px',
         color: '#cccccc',
-      });
+      }).setDepth(41);
       this.leaderboardTexts.push(text);
     });
   }

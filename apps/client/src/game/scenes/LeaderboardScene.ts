@@ -107,7 +107,9 @@ export default class LeaderboardScene extends Phaser.Scene {
     });
 
     // Player avatar above podium
-    const avatar = this.add.rectangle(x, baseY + 10, 20, 26, 0x00ff88);
+    const skins = ['p1_stand', 'p2_stand', 'p3_stand'];
+    const skinKey = skins[(entry.rank - 1) % skins.length];
+    const avatar = this.add.image(x, baseY + 10, skinKey).setScale(0.5);
     avatar.setAlpha(0);
     this.tweens.add({
       targets: avatar,
