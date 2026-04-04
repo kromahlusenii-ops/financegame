@@ -42,7 +42,19 @@ export default function Dashboard() {
         fetch(`${API_BASE}/api/sessions`, { headers }),
       ]);
 
-      if (lessonsRes.ok) setLessons(await lessonsRes.json());
+      if (lessonsRes.status === 401 || sessionsRes.status === 401) {
+        signOut();
+        navigate('/instructor/login');
+        return;
+      }
+
+      if (lessonsRes.ok) {
+        const data = await lessonsRes.json();
+        setLessons((data || []).map((l: any) => ({
+          ...l,
+          checkpoint_count: l.checkpoints?.[0]?.count ?? l.checkpoint_count ?? 0,
+        })));
+      }
       if (sessionsRes.ok) setSessions(await sessionsRes.json());
     } catch {
       // Handle error silently
@@ -59,12 +71,21 @@ export default function Dashboard() {
         body: JSON.stringify({ title: 'New Lesson', timer_seconds: 15 }),
       });
 
+      if (res.status === 401) {
+        signOut();
+        navigate('/instructor/login');
+        return;
+      }
+
       if (res.ok) {
         const lesson = await res.json();
         navigate(`/instructor/lessons/${lesson.id}`);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to create lesson');
       }
     } catch {
-      // Handle error
+      alert('Network error — please try again');
     }
   }
 
@@ -76,12 +97,21 @@ export default function Dashboard() {
         body: JSON.stringify({ lesson_id: lessonId }),
       });
 
+      if (res.status === 401) {
+        signOut();
+        navigate('/instructor/login');
+        return;
+      }
+
       if (res.ok) {
         const data = await res.json();
         navigate(`/instructor/sessions/${data.sessionId}/lobby`);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to create session');
       }
     } catch {
-      // Handle error
+      alert('Network error — please try again');
     }
   }
 
