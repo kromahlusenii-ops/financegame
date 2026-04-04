@@ -78,8 +78,8 @@ export default class RunnerScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.groundBody);
 
     // === Obstacle group ===
-    this.obstacles = this.physics.add.group();
-    this.collectibles = this.physics.add.group();
+    this.obstacles = this.physics.add.group({ runChildUpdate: false });
+    this.collectibles = this.physics.add.group({ runChildUpdate: false });
 
     // Obstacle collision → stumble
     this.physics.add.overlap(this.player, this.obstacles, (_p, obs) => {
@@ -254,7 +254,11 @@ export default class RunnerScene extends Phaser.Scene {
   private startGame(): void {
     this.gameStarted = true;
     this.isRunning = true;
+    this.scrollSpeed = 200;
     this.player.play('p1_run');
+
+    // Spawn first obstacle quickly
+    this.obstacleTimer = 2000;
 
     for (const obj of this.startOverlay) {
       this.tweens.add({
@@ -332,44 +336,47 @@ export default class RunnerScene extends Phaser.Scene {
       obsType = 'box';
     }
 
+    const speed = this.scrollSpeed || 200;
+
     switch (obsType) {
       case 'box': {
         const obs = this.physics.add.image(spawnX, groundY - 35, 'box').setDepth(8);
-        obs.body!.setAllowGravity(false);
-        (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-this.scrollSpeed);
         this.obstacles.add(obs);
+        (obs.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
         break;
       }
       case 'spikes': {
         const obs = this.physics.add.image(spawnX, groundY - 20, 'spikes').setDepth(8).setScale(0.7);
-        obs.body!.setAllowGravity(false);
-        (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-this.scrollSpeed);
         this.obstacles.add(obs);
+        (obs.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
         break;
       }
       case 'doubleBox': {
         for (let i = 0; i < 2; i++) {
           const obs = this.physics.add.image(spawnX, groundY - 35 - i * 70, 'boxExplosive').setDepth(8);
-          obs.body!.setAllowGravity(false);
-          (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-this.scrollSpeed);
           this.obstacles.add(obs);
+          (obs.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+          (obs.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
         }
         break;
       }
       case 'slime': {
         const slime = this.physics.add.sprite(spawnX, groundY - 14, 'slimeWalk1').setDepth(8);
         slime.play('slime_walk');
-        slime.body!.setAllowGravity(false);
-        (slime.body as Phaser.Physics.Arcade.Body).setVelocityX(-this.scrollSpeed * 0.7);
         this.obstacles.add(slime);
+        (slime.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (slime.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed * 0.7);
         break;
       }
       case 'fly': {
         const flyY = groundY - Phaser.Math.Between(60, 110);
         const fly = this.physics.add.sprite(spawnX, flyY, 'flyFly1').setDepth(8);
         fly.play('fly_hover');
-        fly.body!.setAllowGravity(false);
-        (fly.body as Phaser.Physics.Arcade.Body).setVelocityX(-this.scrollSpeed);
+        this.obstacles.add(fly);
+        (fly.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+        (fly.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
         this.tweens.add({
           targets: fly,
           y: fly.y - 15,
@@ -378,7 +385,6 @@ export default class RunnerScene extends Phaser.Scene {
           repeat: -1,
           ease: 'Sine.easeInOut',
         });
-        this.obstacles.add(fly);
         break;
       }
     }
@@ -399,11 +405,13 @@ export default class RunnerScene extends Phaser.Scene {
     else if (roll < 0.61) { key = 'gemRed'; pts = 50; }
     else { return; }
 
+    const speed = this.scrollSpeed || 200;
     const coin = this.physics.add.image(x + Phaser.Math.Between(-30, 60), groundY - 120, key)
       .setDepth(9).setScale(0.5);
-    coin.body!.setAllowGravity(false);
-    (coin.body as Phaser.Physics.Arcade.Body).setVelocityX(-this.scrollSpeed);
     coin.setData('points', pts);
+    this.collectibles.add(coin);
+    (coin.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
+    (coin.body as Phaser.Physics.Arcade.Body).setVelocityX(-speed);
 
     this.tweens.add({
       targets: coin,
@@ -413,8 +421,6 @@ export default class RunnerScene extends Phaser.Scene {
       repeat: -1,
       ease: 'Sine.easeInOut',
     });
-
-    this.collectibles.add(coin);
   }
 
   private collectItem(coin: Phaser.Physics.Arcade.Image): void {
