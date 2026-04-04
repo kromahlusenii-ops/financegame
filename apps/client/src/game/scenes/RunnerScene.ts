@@ -43,9 +43,9 @@ export default class RunnerScene extends Phaser.Scene {
   // Variable-height jump state
   private isJumpHeld = false;
   private jumpHoldTime = 0;
-  private readonly JUMP_INITIAL_VELOCITY = -420;
-  private readonly JUMP_HOLD_FORCE = -1200;      // additional upward acceleration while held
-  private readonly JUMP_HOLD_MAX_MS = 250;        // max hold duration in ms
+  private readonly JUMP_INITIAL_VELOCITY = -600;
+  private readonly JUMP_HOLD_BOOST = -30;         // extra upward nudge per frame while held
+  private readonly JUMP_HOLD_MAX_MS = 200;        // max hold duration in ms
 
   constructor() {
     super({ key: 'RunnerScene' });
@@ -188,12 +188,12 @@ export default class RunnerScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.isRunning || !this.gameStarted) return;
 
-    // Variable-height jump: apply extra force while button is held
+    // Variable-height jump: holding the button adds upward boost each frame
     if (this.isJumpHeld) {
       this.jumpHoldTime += delta;
       if (this.jumpHoldTime < this.JUMP_HOLD_MAX_MS) {
         const body = this.player.body as Phaser.Physics.Arcade.Body;
-        body.setVelocityY(body.velocity.y + (this.JUMP_HOLD_FORCE * delta) / 1000);
+        body.setVelocityY(body.velocity.y + this.JUMP_HOLD_BOOST);
       } else {
         this.isJumpHeld = false;
       }
@@ -382,30 +382,30 @@ export default class RunnerScene extends Phaser.Scene {
     const spawnX = width + 100;
 
     const cleared = this.obstaclesCleared;
-    let maxTier = 1;
-    if (cleared >= 12) maxTier = 4;
-    else if (cleared >= 5) maxTier = 3;
-    else if (cleared >= 2) maxTier = 2;
 
-    const roll = Math.random();
-    let obsType: string;
+    // Build weighted pool — platforms & mushrooms always available,
+    // enemies unlock after clearing a few obstacles
+    const pool: { type: string; weight: number }[] = [
+      { type: 'box', weight: 10 },
+      { type: 'spikes', weight: 10 },
+      { type: 'platform', weight: 15 },
+      { type: 'coinBox', weight: 12 },
+      { type: 'mushroom', weight: 15 },
+    ];
+    if (cleared >= 3) {
+      pool.push({ type: 'doubleBox', weight: 8 });
+      pool.push({ type: 'slime', weight: 8 });
+    }
+    if (cleared >= 6) {
+      pool.push({ type: 'fly', weight: 8 });
+    }
 
-    if (maxTier >= 4 && roll < 0.10) {
-      obsType = 'slime';
-    } else if (maxTier >= 3 && roll < 0.20) {
-      obsType = 'fly';
-    } else if (maxTier >= 3 && roll < 0.30) {
-      obsType = 'doubleBox';
-    } else if (maxTier >= 2 && roll < 0.45) {
-      obsType = 'platform';
-    } else if (maxTier >= 2 && roll < 0.55) {
-      obsType = 'coinBox';
-    } else if (roll < 0.70) {
-      obsType = 'mushroom';
-    } else if (roll < 0.85) {
-      obsType = 'spikes';
-    } else {
-      obsType = 'box';
+    const totalWeight = pool.reduce((s, p) => s + p.weight, 0);
+    let roll = Math.random() * totalWeight;
+    let obsType = 'box';
+    for (const entry of pool) {
+      roll -= entry.weight;
+      if (roll <= 0) { obsType = entry.type; break; }
     }
 
     const speed = this.scrollSpeed || 200;
