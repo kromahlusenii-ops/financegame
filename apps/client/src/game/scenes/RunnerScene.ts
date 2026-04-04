@@ -349,8 +349,8 @@ export default class RunnerScene extends Phaser.Scene {
     this.scrollSpeed = 200;
     this.player.play('p1_run');
 
-    // Spawn first obstacle quickly
-    this.obstacleTimer = 2000;
+    // Give player a moment before first obstacle
+    this.obstacleTimer = 0;
 
     for (const obj of this.startOverlay) {
       this.tweens.add({
@@ -412,8 +412,9 @@ export default class RunnerScene extends Phaser.Scene {
   }
 
   private releaseJump(): void {
+    // Only stop the hold boost — do NOT clear jumpRequested,
+    // otherwise quick taps get eaten before update() can process them
     this.isJumpHeld = false;
-    this.jumpRequested = false;
   }
 
   private isGrounded(): boolean {
