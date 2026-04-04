@@ -16,11 +16,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { id: sessionId } = req.query;
 
   try {
-    const { playerId, selectedIndex } = req.body;
+    const { playerId, selectedIndex, runScore } = req.body;
 
     if (!playerId || selectedIndex === undefined) {
       return res.status(400).json({ error: 'playerId and selectedIndex are required' });
     }
+
+    // Runner coin score from client (capped to prevent abuse)
+    const coinScore = Math.max(0, Math.min(runScore || 0, 500));
 
     // Get session
     const { data: session, error: sessionError } = await supabase
@@ -91,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Update player
     const newLives = correct ? player.lives : player.lives - 1;
     const newStatus = newLives <= 0 ? 'eliminated' : 'alive';
-    const newScore = player.score + pointsAwarded;
+    const newScore = player.score + pointsAwarded + coinScore;
     const newTotalTime = (player.total_time_ms || 0) + timeTakenMs;
 
     await supabase

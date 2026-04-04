@@ -3,7 +3,7 @@ import { calculatePoints, sortLeaderboard } from '@financegame/shared';
 
 describe('Client-side scoring (re-exports from shared)', () => {
   it('calculates correct points for a correct answer', () => {
-    expect(calculatePoints(true, 7500, 15)).toBe(125);
+    expect(calculatePoints(true, 7500, 15)).toBe(750);
   });
 
   it('returns 0 for wrong answer', () => {

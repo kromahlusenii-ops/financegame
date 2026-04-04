@@ -160,12 +160,13 @@ export default class CheckpointOverlayScene extends Phaser.Scene {
 
     const sessionId = this.registry.get('sessionId') as string;
     const playerId = this.registry.get('playerId') as string;
+    const runScore = (this.registry.get('runScore') as number) || 0;
 
     try {
       const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId, selectedIndex: index }),
+        body: JSON.stringify({ playerId, selectedIndex: index, runScore }),
       });
 
       if (res.ok) {
@@ -188,6 +189,7 @@ export default class CheckpointOverlayScene extends Phaser.Scene {
   private showResult(msg: {
     correct?: boolean;
     correctIndex?: number;
+    pointsAwarded?: number;
     fact?: string;
     newStatus?: string;
   }): void {
@@ -215,8 +217,24 @@ export default class CheckpointOverlayScene extends Phaser.Scene {
         fontStyle: 'bold',
       }).setOrigin(0.5);
       this.resultGroup?.add(t);
+
+      // Show big point reward
+      if (msg.pointsAwarded) {
+        const pts = this.add.text(width / 2, resultY + 28, `+${msg.pointsAwarded} pts`, {
+          fontSize: '18px',
+          color: '#ffd700',
+          fontStyle: 'bold',
+        }).setOrigin(0.5);
+        this.resultGroup?.add(pts);
+        this.tweens.add({
+          targets: pts,
+          scaleX: 1.3, scaleY: 1.3,
+          duration: 200,
+          yoyo: true,
+        });
+      }
     } else {
-      const t = this.add.text(width / 2, resultY, 'Wrong!', {
+      const t = this.add.text(width / 2, resultY, 'Wrong! +0 pts', {
         fontSize: '22px',
         color: '#e74c3c',
         fontStyle: 'bold',

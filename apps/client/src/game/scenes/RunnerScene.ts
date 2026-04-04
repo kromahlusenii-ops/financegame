@@ -668,6 +668,9 @@ export default class RunnerScene extends Phaser.Scene {
     this.isRunning = false;
     this.currentCheckpointIndex = msg.checkpointIndex || 0;
 
+    // Share run score so checkpoint overlay can send it with the answer
+    this.registry.set('runScore', this.runScore);
+
     // Stop player
     this.player.stop();
     this.player.setTexture('p1_stand');
@@ -708,6 +711,10 @@ export default class RunnerScene extends Phaser.Scene {
   private resumeRunning(): void {
     this.isRunning = true;
     this.player.play('p1_run');
+
+    // Reset run score for next segment (already synced to server)
+    this.runScore = 0;
+    this.updateHUD();
 
     // Remove flag
     if (this.checkpointFlag) {

@@ -2,35 +2,35 @@ import { describe, it, expect } from 'vitest';
 import { calculatePoints, sortLeaderboard } from './scoring.js';
 
 describe('calculatePoints', () => {
-  it('returns base 100 + speed bonus for correct answer', () => {
+  it('returns base 500 + speed bonus for correct answer', () => {
     const points = calculatePoints(true, 7500, 15);
-    expect(points).toBe(125); // 100 + round(50 * 0.5)
+    expect(points).toBe(750); // 500 + round(500 * 0.5)
   });
 
   it('returns 0 for wrong answer', () => {
     expect(calculatePoints(false, 1000, 15)).toBe(0);
   });
 
-  it('returns max points (150) for instant answer (0ms)', () => {
-    expect(calculatePoints(true, 0, 15)).toBe(150);
+  it('returns max points (1000) for instant answer (0ms)', () => {
+    expect(calculatePoints(true, 0, 15)).toBe(1000);
   });
 
-  it('returns base points (100) when time equals full timer', () => {
-    expect(calculatePoints(true, 15000, 15)).toBe(100);
+  it('returns base points (500) when time equals full timer', () => {
+    expect(calculatePoints(true, 15000, 15)).toBe(500);
   });
 
   it('floors bonus at 0 when time exceeds timer', () => {
-    expect(calculatePoints(true, 20000, 15)).toBe(100);
+    expect(calculatePoints(true, 20000, 15)).toBe(500);
   });
 
-  it('caps bonus at 50 for negative time', () => {
+  it('caps bonus at 500 for negative time', () => {
     // Edge case: timeTakenMs somehow negative
-    expect(calculatePoints(true, -1000, 15)).toBe(150);
+    expect(calculatePoints(true, -1000, 15)).toBe(1000);
   });
 
   it('works with different timer values', () => {
-    expect(calculatePoints(true, 5000, 10)).toBe(125); // 100 + round(50 * 0.5)
-    expect(calculatePoints(true, 0, 30)).toBe(150);
+    expect(calculatePoints(true, 5000, 10)).toBe(750); // 500 + round(500 * 0.5)
+    expect(calculatePoints(true, 0, 30)).toBe(1000);
   });
 });
 
